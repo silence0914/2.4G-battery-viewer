@@ -59,6 +59,16 @@ $targets = @(
        Inc  = $hidapi
        Libs = $hid_libs }
 
+    @{ Name = 'listen';   Exe = 'listen_all.exe'
+       Src  = @('src\listen_all.cpp', 'third_party\hidapi\windows\hid.c')
+       Inc  = $hidapi
+       Libs = $hid_libs }
+
+    @{ Name = 'report';   Exe = 'report_probe.exe'
+       Src  = @('src\report_probe.cpp', 'third_party\hidapi\windows\hid.c')
+       Inc  = $hidapi
+       Libs = $hid_libs }
+
     @{ Name = 'pnp';      Exe = 'pnp_probe.exe'
        Src  = @('src\pnp_probe.cpp')
        Inc  = @()

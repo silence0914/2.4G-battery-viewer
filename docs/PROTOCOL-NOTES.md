@@ -180,3 +180,55 @@ rawprobe --vid 05AC --up FF60 --usage 0061 --index 0 --listen 5000
 ```
 
 产物在 `out\`。
+
+---
+
+## 2.1 Valkyrie 官方驱动逆向（2026-11-12 补充）
+
+驱动位置：`C:\Program Files (x86)\Valkyrie Driver`（MFC 原生程序，版本 Beta 1.0.1.0）
+
+### config.xml 里的设备映射
+
+```xml
+<keyboard name="Valkyrie 75" device_type="104" device_info="VK78-keyboard">
+  <mode desc="USB"        product_name="Valkyrie 75"
+        hid_interface="VID_05AC&PID_024F&MI_02"/>
+  <mode desc="2.4G TYPE-A" product_name="VK 75 Wireless Receiver"
+        hid_interface="VID_05AC&PID_024F&MI_03"/>
+  <mode desc="2.4G TYPE-A" vid="0C45" pid="FEFE"
+        product_name="2.4G Dongle" hid_interface="VID_0C45&PID_FEFE&MI_03"/>
+</keyboard>
+```
+
+`VK 75 Wireless Receiver` 与实机完全一致，确认走 **MI_03**。
+
+### 抓到的设备报文（全 32 字节，最后 1 字节 = 前面各字节求和取低 8 位）
+
+```
+20 01 00 53/54/55 … 74/75/76     心跳，第 4 字节缓增
+02 00 00 40 00 30 00 AC 05 4F 02 05 01 FF FF 01 00 66 01 …  设备信息（含 VID/PID）
+05 10 … / 07 10 …                状态
+10 1C 00 … ~ 10 1C 13 …          20 个按键项的设置应答（改设置时触发）
+10 10 14 …
+```
+
+### 未找到电量
+
+尝试过并全部失败的读取方式：
+
+| 方式 | 结果 |
+|---|---|
+| 监听全部 9 个 HID 集合的 input report（含驱动启动瞬间） | 只有心跳和设置应答，无电量 |
+| `hid_get_input_report` 扫 report id 0x00–0x10 | 全部失败 |
+| `hid_get_feature_report` 扫 report id 0x00–0x10 | 全部失败（这些集合 feature 长度为 0） |
+| 驱动启动 / 切页面 / 改设置时监听 | 只有设置类应答 |
+| 注册表 `HKCU\Software\Valkyrie Driver` | 只有 LCID / theme_type / DeviceType=104 |
+| `%LOCALAPPDATA%\Valkyrie Driver Files\db\Valkyrie 75_data.db` | SQLite，只有灯光/触发/去抖设置，无 battery 字段 |
+
+驱动里有电量控件（`BatteryCtrl`、`SetBatteryInfo`、`icon_batteryvalue.png`、`show_battery`），
+说明功能存在，但数据获取路径不经过上述任何一条。
+
+### 下一步
+
+只能用 **USBPcap**（随 Wireshark 安装）在内核层抓 USB 双向报文，
+看驱动到底往 dongle 写了什么。这是唯一还没试的观测手段。
