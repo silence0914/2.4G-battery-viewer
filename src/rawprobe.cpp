@@ -66,6 +66,7 @@ int main(int argc, char** argv) {
 
     int vid = -1, pid = -1, up = -1, usage = -1;
     int index = 0, readms = 500, repeat = 1, listenms = 0;
+    int featId = -1, scanfeat = 0;
     std::vector<unsigned char> frame;
     bool have_frame = false;
 
@@ -81,6 +82,8 @@ int main(int argc, char** argv) {
         else if (a == "--index") index = atoi(next("0"));
         else if (a == "--read")  readms = atoi(next("500"));
         else if (a == "--listen") listenms = atoi(next("3000"));
+        else if (a == "--feat") featId = static_cast<int>(strtol(next(""), nullptr, 16));
+        else if (a == "--scanfeat") scanfeat = 1;
         else if (a == "--repeat") repeat = atoi(next("1"));
         else if (a == "--send") {
             if (!parse_hex(next(""), frame)) {
@@ -113,7 +116,7 @@ int main(int argc, char** argv) {
             matches[i]->path ? matches[i]->path : "(null)");
     }
 
-    if (!have_frame && listenms <= 0) {
+    if (!have_frame && listenms <= 0 && featId < 0 && !scanfeat) {
         hid_free_enumeration(devs);
         hid_exit();
         return matches.empty() ? 1 : 0;
@@ -153,6 +156,7 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    if (have_frame) {
     out("\nSEND (%zu bytes): ", frame.size());
     dump(frame.data(), static_cast<int>(frame.size()));
 
@@ -172,6 +176,35 @@ int main(int argc, char** argv) {
             dump(buf, r);
         }
         if (got == 0) out("  (no reply in %d ms)\n", readms);
+    }
+    }
+
+    // ---- feature report polling ----
+    if (featId >= 0 || scanfeat) {
+        auto try_feat = [&](int id) -> bool {
+            unsigned char fb[256];
+            std::memset(fb, 0, sizeof(fb));
+            fb[0] = static_cast<unsigned char>(id);
+            int r = hid_get_feature_report(h, fb, 64);
+            if (r <= 0) return false;
+            out("  FEAT 0x%02X (%d): ", id, r);
+            dump(fb, r);
+            return true;
+        };
+
+        if (scanfeat) {
+            out("\nSCAN feature reports 0x00..0x10\n");
+            for (int id = 0; id <= 0x10; ++id) try_feat(id);
+        } else {
+            out("\nPOLL feature 0x%02X for %d ms\n", featId, readms);
+            ULONGLONG t0 = GetTickCount64();
+            int got = 0;
+            while (GetTickCount64() - t0 < static_cast<ULONGLONG>(readms)) {
+                if (try_feat(featId)) ++got;
+                Sleep(60);
+            }
+            if (got == 0) out("  (no feature data)\n");
+        }
     }
 
     hid_close(h);

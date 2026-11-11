@@ -9,8 +9,12 @@ Windows 上显示鼠标 / 键盘 / 耳机电量的桌面小工具。C++20 + Win3
 | 设备 | 电量 | 说明 |
 |---|---|---|
 | Logitech G903（Lightspeed 接收器） | ✅ 可读 | HID++ 2.0 特征 `0x1001` BATTERY_VOLTAGE |
-| Valkyrie VK75-Loki（2.4G） | 🟡 不可读 | 厂商私有协议，尚未解出电量字段 |
-| iKF V11 Pro+（USB / 杰理方案） | 🟡 不可读 | 私有协议，尚未解出 |
+| Valkyrie VK75-Loki（2.4G） | 🟡 不可读 | 厂商私有协议，尚未解出电量字段；蓝牙模式可走标准 GATT |
+| iKF V11 Pro+（2.4G dongle） | 🟡 不可读 | 官方 WebHID 协议已逆向，但 dongle 不回应；蓝牙模式可走标准 GATT |
+
+另有一条**通用通路**：蓝牙 LE 的 GATT Battery Service（`0x180F` / 特征 `0x2A19`）。
+任何实现了标准电池服务的蓝牙外设都能读，不依赖任何厂商协议。
+设备切到蓝牙模式并配对后，界面会自动改用这条通路，传输方式那一行会显示「蓝牙 LE · GATT Battery」。
 
 界面上三台设备都会被识别并显示型号，读不到电量的会明确写出原因，不会假装有数据。
 
@@ -55,10 +59,13 @@ src/
   app_main.cpp      Win32 + D3D11 + ImGui 主循环与界面
   providers.cpp     设备枚举与电量读取（后台线程调用）
   providers.h
+  ble_battery.cpp   蓝牙 LE GATT Battery Service 读取（C++/WinRT）
+  ble_battery.h
   device.h          DeviceInfo / 状态枚举 / 电压换算
   probe_main.cpp    HID 枚举与描述符导出工具
   rawprobe.cpp      原始报文收发工具
   hidpp_probe.cpp   HID++ 特征表枚举工具
+  ikf_probe.cpp     iKF 全集合写/听探测工具
 third_party/
   hidapi/           HID 访问（vendored，仅 Windows 后端）
   imgui/            Dear ImGui v1.93.0（vendored）
@@ -66,7 +73,10 @@ tools/
   capture.ps1       窗口截图（PrintWindow）
 docs/
   PROTOCOL-NOTES.md 协议探测记录
+  IKF-PROTOCOL.md   iKF 官方 HID 协议逆向结果
 ```
+
+蓝牙部分用 C++/WinRT，头文件随 Windows SDK 提供，链接 `WindowsApp.lib`，不需要 NuGet 或 vcpkg。
 
 ## 已知限制
 

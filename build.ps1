@@ -7,7 +7,7 @@
 # CMakeLists.txt stays in the repo for CLion / normal machines.
 
 param(
-    [string]$Target = 'all',   # all | probe | rawprobe | hidpp | app
+    [string]$Target = 'all',   # all | probe | rawprobe | hidpp | ikf | app
     [switch]$Clean
 )
 
@@ -22,6 +22,11 @@ New-Item -ItemType Directory -Force -Path $out | Out-Null
 $hidapi = @('third_party\hidapi\hidapi', 'third_party\hidapi\windows')
 $imgui  = @('third_party\imgui', 'third_party\imgui\backends')
 
+# C++/WinRT 头文件随 Windows SDK 提供，不需要 NuGet / vcpkg
+$sdk_cppwinrt = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Include' -Directory -ErrorAction SilentlyContinue |
+                 Sort-Object Name -Descending | Select-Object -First 1 |
+                 ForEach-Object { Join-Path $_.FullName 'cppwinrt' })
+
 $imgui_src = @(
     'third_party\imgui\imgui.cpp'
     'third_party\imgui\imgui_draw.cpp'
@@ -31,26 +36,39 @@ $imgui_src = @(
     'third_party\imgui\backends\imgui_impl_dx11.cpp'
 )
 
+$hid_libs = @('setupapi.lib', 'hid.lib', 'ole32.lib')
+
 $targets = @(
     @{ Name = 'probe';    Exe = 'probe.exe'
        Src  = @('src\probe_main.cpp', 'third_party\hidapi\windows\hid.c')
        Inc  = $hidapi
-       Libs = @('setupapi.lib', 'hid.lib', 'ole32.lib') }
+       Libs = $hid_libs }
 
     @{ Name = 'rawprobe'; Exe = 'rawprobe.exe'
        Src  = @('src\rawprobe.cpp', 'third_party\hidapi\windows\hid.c')
        Inc  = $hidapi
-       Libs = @('setupapi.lib', 'hid.lib', 'ole32.lib') }
+       Libs = $hid_libs }
 
     @{ Name = 'hidpp';    Exe = 'hidpp_probe.exe'
        Src  = @('src\hidpp_probe.cpp', 'third_party\hidapi\windows\hid.c')
        Inc  = $hidapi
-       Libs = @('setupapi.lib', 'hid.lib', 'ole32.lib') }
+       Libs = $hid_libs }
+
+    @{ Name = 'ikf';      Exe = 'ikf_probe.exe'
+       Src  = @('src\ikf_probe.cpp', 'third_party\hidapi\windows\hid.c')
+       Inc  = $hidapi
+       Libs = $hid_libs }
+
+    @{ Name = 'bletest';  Exe = 'bletest.exe'
+       Src  = @('src\ble_test.cpp', 'src\ble_battery.cpp')
+       Inc  = @($sdk_cppwinrt)
+       Libs = @('WindowsApp.lib') }
 
     @{ Name = 'app';      Exe = 'battery_viewer.exe'
-       Src  = (@('src\app_main.cpp', 'src\providers.cpp') + $imgui_src + @('third_party\hidapi\windows\hid.c'))
-       Inc  = ($hidapi + $imgui)
-       Libs = @('setupapi.lib', 'hid.lib', 'ole32.lib', 'd3d11.lib', 'dxgi.lib', 'd3dcompiler.lib') }
+       Src  = (@('src\app_main.cpp', 'src\providers.cpp', 'src\ble_battery.cpp') +
+               $imgui_src + @('third_party\hidapi\windows\hid.c'))
+       Inc  = ($hidapi + $imgui + @($sdk_cppwinrt))
+       Libs = ($hid_libs + @('d3d11.lib', 'dxgi.lib', 'd3dcompiler.lib', 'WindowsApp.lib')) }
 )
 
 if ($Target -ne 'all') {
@@ -62,7 +80,10 @@ $defs = '/DNDEBUG /DNOMINMAX /D_CRT_SECURE_NO_WARNINGS /DHID_API_NO_EXPORT_DEFIN
 
 $failed = 0
 foreach ($t in $targets) {
-    $inc = ($t.Inc | ForEach-Object { "/I`"" + (Join-Path $root $_) + "`"" }) -join ' '
+    $inc = ($t.Inc | ForEach-Object {
+        $p = if ([System.IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $root $_ }
+        "/I`"$p`""
+    }) -join ' '
     $src = ($t.Src | ForEach-Object { '"' + (Join-Path $root $_) + '"' }) -join ' '
     $lib = ($t.Libs -join ' ')
 

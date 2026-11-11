@@ -30,10 +30,30 @@ target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
 target_link_libraries(imgui PUBLIC d3d11 dxgi d3dcompiler)
 
 # ---------------------------------------------------------------------------
+# C++/WinRT 头文件随 Windows SDK 提供（蓝牙 GATT 用），不需要 NuGet
+# ---------------------------------------------------------------------------
+set(CPPWINRT_DIR "$ENV{WindowsSdkDir}Include/$ENV{WindowsSDKVersion}cppwinrt")
+if (NOT EXISTS "${CPPWINRT_DIR}/winrt/base.h")
+    file(GLOB _sdk_versions "C:/Program Files (x86)/Windows Kits/10/Include/10.*")
+    list(SORT _sdk_versions)
+    list(REVERSE _sdk_versions)
+    foreach (_v ${_sdk_versions})
+        if (EXISTS "${_v}/cppwinrt/winrt/base.h")
+            set(CPPWINRT_DIR "${_v}/cppwinrt")
+            break()
+        endif()
+    endforeach()
+endif()
+
+# ---------------------------------------------------------------------------
 # main application
 # ---------------------------------------------------------------------------
-add_executable(battery_viewer WIN32 src/app_main.cpp src/providers.cpp)
-target_link_libraries(battery_viewer PRIVATE hidapi imgui)
+add_executable(battery_viewer WIN32
+    src/app_main.cpp
+    src/providers.cpp
+    src/ble_battery.cpp)
+target_include_directories(battery_viewer PRIVATE ${CPPWINRT_DIR})
+target_link_libraries(battery_viewer PRIVATE hidapi imgui WindowsApp)
 
 # ---------------------------------------------------------------------------
 # command line tools

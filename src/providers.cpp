@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "hidapi.h"
+#include "ble_battery.h"
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -298,6 +299,35 @@ std::vector<DeviceInfo> poll_devices() {
         }
     }
     out.push_back(hs);
+
+    // --- 蓝牙 LE：标准 GATT Battery Service（0x180F / 0x2A19）---
+    // 走这条路不需要任何厂商协议，只要设备在蓝牙模式下实现了标准电池服务。
+    // 2.4G / USB 有线状态下设备不会出现在这里，所以扫描不到是正常的。
+    std::vector<BleDeviceBattery> ble = scan_ble_batteries();
+
+    auto find_ble = [&ble](std::initializer_list<const char*> keys) -> const BleDeviceBattery* {
+        for (const BleDeviceBattery& b : ble) {
+            std::string n = lower(b.name);
+            for (const char* k : keys) {
+                if (n.find(k) != std::string::npos) return &b;
+            }
+        }
+        return nullptr;
+    };
+
+    auto upgrade = [](DeviceInfo& di, const BleDeviceBattery* b) {
+        if (!b || di.status == BatteryStatus::Ok) return;
+        di.status = BatteryStatus::Ok;
+        di.percent = b->percent;
+        di.millivolts = -1;
+        di.charging = false;
+        if (di.model.rfind("未检测到", 0) == 0 || di.model.empty()) di.model = b->name;
+        di.transport = "蓝牙 LE · GATT Battery";
+        di.note = b->address;
+    };
+
+    upgrade(kb, find_ble({"vk 75", "vk75", "valkyrie"}));
+    upgrade(hs, find_ble({"ikf"}));
 
     hid_exit();
     return out;
