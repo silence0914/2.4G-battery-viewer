@@ -9,12 +9,16 @@ Windows 上显示鼠标 / 键盘 / 耳机电量的桌面小工具。C++20 + Win3
 | 设备 | 电量 | 说明 |
 |---|---|---|
 | Logitech G903（Lightspeed 接收器） | ✅ 可读 | HID++ 2.0 特征 `0x1001` BATTERY_VOLTAGE |
-| Valkyrie VK75-Loki（2.4G） | 🟡 不可读 | 厂商私有协议，尚未解出电量字段；蓝牙模式可走标准 GATT |
-| iKF V11 Pro+（2.4G dongle） | 🟡 不可读 | 官方 WebHID 协议已逆向，但 dongle 不回应；蓝牙模式可走标准 GATT |
+| Valkyrie VK75-Loki（2.4G） | 🟡 不可读 | 厂商私有协议，尚未解出电量字段 |
+| iKF V11 Pro+（蓝牙） | ✅ 可读 | 读 Windows 采集的蓝牙电量（PnP 属性 `{104EA319-…},2`） |
 
-另有一条**通用通路**：蓝牙 LE 的 GATT Battery Service（`0x180F` / 特征 `0x2A19`）。
-任何实现了标准电池服务的蓝牙外设都能读，不依赖任何厂商协议。
-设备切到蓝牙模式并配对后，界面会自动改用这条通路，传输方式那一行会显示「蓝牙 LE · GATT Battery」。
+两种通用通路，按顺序尝试：
+
+1. **蓝牙 LE GATT Battery Service**（`0x180F` / 特征 `0x2A19`）——设备必须真的广告 BLE。
+2. **Windows 已采集的蓝牙电量**——读蓝牙 PnP 设备节点上的属性
+   `{104EA319-6EE2-4701-BD47-8DDBF425BBE5}, 2`（BYTE，0..100）。
+   Windows 自己（设置 → 蓝牙和设备）能显示电量时，这个属性就有值，
+   **经典蓝牙（A2DP/HFP）耳机也适用**，iKF 就是走这条。
 
 界面上三台设备都会被识别并显示型号，读不到电量的会明确写出原因，不会假装有数据。
 
@@ -61,6 +65,8 @@ src/
   providers.h
   ble_battery.cpp   蓝牙 LE GATT Battery Service 读取（C++/WinRT）
   ble_battery.h
+  bt_pnp_battery.cpp 读 Windows 采集的蓝牙电量（SetupAPI 设备属性）
+  bt_pnp_battery.h
   device.h          DeviceInfo / 状态枚举 / 电压换算
   probe_main.cpp    HID 枚举与描述符导出工具
   rawprobe.cpp      原始报文收发工具

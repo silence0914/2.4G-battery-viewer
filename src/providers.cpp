@@ -9,6 +9,7 @@
 
 #include "hidapi.h"
 #include "ble_battery.h"
+#include "bt_pnp_battery.h"
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -260,7 +261,6 @@ std::vector<DeviceInfo> poll_devices() {
         mouse.transport = "插好接收器或换到 USB 口再试";
         mouse.note.clear();
     }
-    out.push_back(mouse);
 
     // --- 键盘：Valkyrie（伪装成 Apple VID）---
     DeviceInfo kb;
@@ -279,7 +279,6 @@ std::vector<DeviceInfo> poll_devices() {
             kb.transport = "切到 2.4G 模式或插好接收器";
         }
     }
-    out.push_back(kb);
 
     // --- 耳机：iKF（Jieli 方案）---
     DeviceInfo hs;
@@ -298,7 +297,6 @@ std::vector<DeviceInfo> poll_devices() {
             hs.transport = "插好 USB 或 dongle";
         }
     }
-    out.push_back(hs);
 
     // --- 蓝牙 LE：标准 GATT Battery Service（0x180F / 0x2A19）---
     // 走这条路不需要任何厂商协议，只要设备在蓝牙模式下实现了标准电池服务。
@@ -328,6 +326,37 @@ std::vector<DeviceInfo> poll_devices() {
 
     upgrade(kb, find_ble({"vk 75", "vk75", "valkyrie"}));
     upgrade(hs, find_ble({"ikf"}));
+
+    // --- Windows 已采集到的蓝牙电量（经典蓝牙也能拿到，来自 HFP）---
+    std::vector<BtBatteryDevice> bt = scan_bluetooth_pnp_battery();
+
+    auto find_bt = [&bt](std::initializer_list<const char*> keys) -> const BtBatteryDevice* {
+        for (const BtBatteryDevice& b : bt) {
+            std::string n = lower(b.name);
+            for (const char* k : keys) {
+                if (n.find(k) != std::string::npos) return &b;
+            }
+        }
+        return nullptr;
+    };
+
+    auto upgrade_bt = [](DeviceInfo& di, const BtBatteryDevice* b) {
+        if (!b || di.status == BatteryStatus::Ok) return;
+        di.status = BatteryStatus::Ok;
+        di.percent = b->percent;
+        di.millivolts = -1;
+        di.charging = false;
+        di.transport = "蓝牙 · 系统电量";
+        di.note.clear();
+    };
+
+    upgrade_bt(kb, find_bt({"vk 75", "vk75", "valkyrie"}));
+    upgrade_bt(hs, find_bt({"ikf"}));
+
+    // 所有升级都做完再入列，避免 push_back 拷贝之后又去改局部变量
+    out.push_back(mouse);
+    out.push_back(kb);
+    out.push_back(hs);
 
     hid_exit();
     return out;

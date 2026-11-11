@@ -51,9 +51,10 @@ endif()
 add_executable(battery_viewer WIN32
     src/app_main.cpp
     src/providers.cpp
-    src/ble_battery.cpp)
+    src/ble_battery.cpp
+    src/bt_pnp_battery.cpp)
 target_include_directories(battery_viewer PRIVATE ${CPPWINRT_DIR})
-target_link_libraries(battery_viewer PRIVATE hidapi imgui WindowsApp)
+target_link_libraries(battery_viewer PRIVATE hidapi imgui WindowsApp setupapi)
 
 # ---------------------------------------------------------------------------
 # command line tools

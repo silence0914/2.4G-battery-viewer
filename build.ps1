@@ -59,13 +59,23 @@ $targets = @(
        Inc  = $hidapi
        Libs = $hid_libs }
 
+    @{ Name = 'pnp';      Exe = 'pnp_probe.exe'
+       Src  = @('src\pnp_probe.cpp')
+       Inc  = @()
+       Libs = @('setupapi.lib', 'ole32.lib') }
+
+    @{ Name = 'audio';    Exe = 'audio_probe.exe'
+       Src  = @('src\audio_probe.cpp')
+       Inc  = @()
+       Libs = @('ole32.lib', 'propsys.lib') }
+
     @{ Name = 'bletest';  Exe = 'bletest.exe'
-       Src  = @('src\ble_test.cpp', 'src\ble_battery.cpp')
+       Src  = @('src\ble_test.cpp', 'src\ble_battery.cpp', 'src\bt_pnp_battery.cpp')
        Inc  = @($sdk_cppwinrt)
-       Libs = @('WindowsApp.lib') }
+       Libs = @('WindowsApp.lib', 'setupapi.lib') }
 
     @{ Name = 'app';      Exe = 'battery_viewer.exe'
-       Src  = (@('src\app_main.cpp', 'src\providers.cpp', 'src\ble_battery.cpp') +
+       Src  = (@('src\app_main.cpp', 'src\providers.cpp', 'src\ble_battery.cpp', 'src\bt_pnp_battery.cpp') +
                $imgui_src + @('third_party\hidapi\windows\hid.c'))
        Inc  = ($hidapi + $imgui + @($sdk_cppwinrt))
        Libs = ($hid_libs + @('d3d11.lib', 'dxgi.lib', 'd3dcompiler.lib', 'WindowsApp.lib')) }
