@@ -1,0 +1,19 @@
+# 构建产物
+out/
+build/
+cmake-build-*/
+*.obj
+*.exe
+*.pdb
+*.ilk
+*.log
+
+# IDE
+.vs/
+.idea/
+
+# 参考资料（本地保存的网页，不入库）
+util/
+
+# 旧的内层目录（沙箱无法删除，保持原样）
+/2.4G-battery-viewer/
