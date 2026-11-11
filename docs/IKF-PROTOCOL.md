@@ -121,3 +121,55 @@ case 12:
 - 让用户在 Edge/Chrome 打开 `https://hub.ikeepfun.com/#/device`，插上耳机试一次
 - 如果手上有 2.4G dongle，换成 dongle 连接再抓一轮
 - 找厂商要「USB HID 通信协议文档」（已给话术）
+
+---
+
+## 追加验证（当天深夜，设备切到蓝牙后）
+
+三条通路全部试过，结论明确：
+
+### 1. 官方网页工具（2.4G dongle 模式）
+
+报错：
+
+```
+初始化失败：设备通信通道被占用。
+请在桌面右下角的后台托盘找到对应的桌面驱动程序，右键选择"退出"后再刷新本页面重试。
+```
+
+代码里这个错误的触发条件是：
+
+```js
+const _ = await h("receiver.connection", v => v.connection !== null, "Dongle连接状态");
+if (!_) { if (config.require_feature_report) throw initializationError("channel-occupied"); }
+```
+
+即 **只要 Dongle 不回应就报"通道被占用"**，并不是真的检测到冲突。
+本机确认：没有安装任何 iKF 桌面程序，也没有相关进程在跑。
+
+### 2. 蓝牙 LE GATT
+
+设备切到蓝牙、配对成功（注册表 `BTHPORT` 里有 `iKF-V11 Pro+`，MAC `55:14:CD:86:40:55`），
+但 `BluetoothLEDevice` 全量枚举里**没有这台设备**，只有一台 `midea`（MAC `70:86:CE:F8:A6:D4`）。
+
+→ 它是**经典蓝牙**（A2DP / HFP）配对，不广告 BLE，没有 GATT 电池服务。
+
+### 3. Windows 系统属性
+
+`System.Devices.BatteryLife` 查询结果：
+
+```
+Xbox Wireless Controller   battery=n/a
+iKF-V11 Pro⁺               battery=n/a
+```
+
+→ Windows 自己也拿不到这台设备的电量。
+
+### 结论
+
+**这台耳机目前不向 PC 上报电量**：2.4G dongle 接受命令但不应答，蓝牙是经典音频不提供 GATT，
+系统属性也没有值。三条可编程通路全部走不通。
+
+唯一剩下的可能：厂商有未公开的 dongle 固件升级或 PC 端专用工具能读到电量。
+建议向厂商确认「2.4G 模式是否支持电量查询」以及「是否有更新的 dongle 固件」。
+

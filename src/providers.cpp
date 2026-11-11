@@ -291,7 +291,7 @@ std::vector<DeviceInfo> poll_devices() {
         if (vid_online(0x38B1, &product)) {
             hs.model = "iKF V11 Pro+";
             hs.status = BatteryStatus::Unsupported;
-            hs.note = "Jieli 私有协议未解，电量暂不可读";
+            hs.note = "2.4G 命令无应答 · 蓝牙为经典音频，无 GATT 电量";
         } else {
             hs.status = BatteryStatus::Absent;
             hs.model = "未检测到 iKF 耳机";

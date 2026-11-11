@@ -105,6 +105,109 @@ IAsyncAction scan_async(std::vector<BleDeviceBattery>* out) {
 
 }  // namespace
 
+IAsyncAction scan_all_async(std::vector<BleDeviceInfo>* out) {
+    hstring selector = BluetoothLEDevice::GetDeviceSelector();
+    DeviceInformationCollection infos = co_await DeviceInformation::FindAllAsync(selector);
+
+    for (DeviceInformation const& di : infos) {
+        BleDeviceInfo info;
+        info.name = narrow(std::wstring(di.Name().c_str()));
+
+        BluetoothLEDevice dev{nullptr};
+        try {
+            dev = co_await BluetoothLEDevice::FromIdAsync(di.Id());
+        } catch (...) {
+            continue;
+        }
+        if (!dev) continue;
+
+        try {
+            info.address = mac_of(dev.BluetoothAddress());
+            GattDeviceServicesResult svc = co_await dev.GetGattServicesForUuidAsync(
+                GattServiceUuids::Battery(), BluetoothCacheMode::Uncached);
+            if (svc.Status() == GattCommunicationStatus::Success && svc.Services().Size() > 0) {
+                info.has_battery = true;
+                GattDeviceService service = svc.Services().GetAt(0);
+                GattCharacteristicsResult chars = co_await service.GetCharacteristicsForUuidAsync(
+                    GattCharacteristicUuids::BatteryLevel(), BluetoothCacheMode::Uncached);
+                if (chars.Status() == GattCommunicationStatus::Success &&
+                    chars.Characteristics().Size() > 0) {
+                    GattReadResult rd =
+                        co_await chars.Characteristics().GetAt(0).ReadValueAsync(BluetoothCacheMode::Uncached);
+                    if (rd.Status() == GattCommunicationStatus::Success) {
+                        DataReader reader = DataReader::FromBuffer(rd.Value());
+                        if (reader.UnconsumedBufferLength() > 0)
+                            info.percent = static_cast<int>(reader.ReadByte());
+                    }
+                }
+                try { service.Close(); } catch (...) {}
+            }
+        } catch (...) {}
+
+        try { dev.Close(); } catch (...) {}
+        out->push_back(info);
+    }
+}
+
+std::vector<BleDeviceInfo> scan_ble_devices() {
+    std::vector<BleDeviceInfo> result;
+    try {
+        init_winrt_once();
+        scan_all_async(&result).get();
+    } catch (...) {
+        return {};
+    }
+    return result;
+}
+
+namespace {
+
+IAsyncAction scan_windows_battery_async(std::vector<WindowsBatteryInfo>* out) {
+    auto props = single_threaded_vector<hstring>();
+    props.Append(L"System.Devices.BatteryLife");
+    props.Append(L"System.Devices.BatteryPlusCharging");
+
+    hstring selector = BluetoothDevice::GetDeviceSelectorFromPairingState(true);
+    DeviceInformationCollection infos = co_await DeviceInformation::FindAllAsync(
+        selector, props, DeviceInformationKind::AssociationEndpoint);
+
+    for (DeviceInformation const& di : infos) {
+        WindowsBatteryInfo info;
+        info.name = narrow(std::wstring(di.Name().c_str()));
+        info.id = narrow(std::wstring(di.Id().c_str()));
+
+        try {
+            auto p = di.Properties();
+            if (p && p.HasKey(L"System.Devices.BatteryLife")) {
+                auto v = p.Lookup(L"System.Devices.BatteryLife");
+                try {
+                    info.percent = static_cast<int>(winrt::unbox_value<uint8_t>(v));
+                } catch (...) {
+                    try {
+                        info.percent = static_cast<int>(winrt::unbox_value<int32_t>(v));
+                    } catch (...) {
+                    }
+                }
+            }
+        } catch (...) {}
+
+        out->push_back(info);
+    }
+}
+
+}  // namespace
+
+std::vector<WindowsBatteryInfo> scan_windows_battery() {
+    std::vector<WindowsBatteryInfo> result;
+    try {
+        init_winrt_once();
+        scan_windows_battery_async(&result).get();
+    } catch (...) {
+        return {};
+    }
+    return result;
+}
+
 std::vector<BleDeviceBattery> scan_ble_batteries(bool force) {
     static std::mutex mtx;
     static std::vector<BleDeviceBattery> cache;
