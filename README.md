@@ -78,9 +78,12 @@ third_party/
 tools/
   capture.ps1       窗口截图（PrintWindow）
 docs/
+  HANDOFF.md        交接说明：当前状态、下一步、环境坑、工具用法
   PROTOCOL-NOTES.md 协议探测记录
   IKF-PROTOCOL.md   iKF 官方 HID 协议逆向结果
 ```
+
+> 隔一段时间再回来，先读 [docs/HANDOFF.md](docs/HANDOFF.md)。
 
 蓝牙部分用 C++/WinRT，头文件随 Windows SDK 提供，链接 `WindowsApp.lib`，不需要 NuGet 或 vcpkg。
 
