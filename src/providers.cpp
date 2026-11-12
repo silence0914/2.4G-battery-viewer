@@ -242,6 +242,18 @@ int voltage_to_percent(int mv) {
     return 0;
 }
 
+// iKF 的蓝牙节点名带 HFP 后缀，显示时去掉
+static std::string clean_bt_name(const std::string& n) {
+    std::string s = n;
+    const char* suffixes[] = {" Hands-Free AG", " Hands-Free", " Handsfree"};
+    for (const char* suf : suffixes) {
+        size_t p = s.find(suf);
+        if (p != std::string::npos) s.erase(p);
+    }
+    while (!s.empty() && s.back() == ' ') s.pop_back();
+    return s;
+}
+
 // ---------------------------------------------------------------------------
 // 主入口
 // ---------------------------------------------------------------------------
@@ -262,23 +274,8 @@ std::vector<DeviceInfo> poll_devices() {
         mouse.note.clear();
     }
 
-    // --- 键盘：Valkyrie（伪装成 Apple VID）---
-    DeviceInfo kb;
-    kb.kind = DeviceKind::Keyboard;
-    kb.kind_label = "键盘";
-    kb.transport = "2.4G 接收器";
-    {
-        std::string product;
-        if (vid_online(0x05AC, &product)) {
-            kb.model = product.empty() ? "Valkyrie VK75-Loki" : product;
-            kb.status = BatteryStatus::Unsupported;
-            kb.note = "厂商协议未解，电量暂不可读";
-        } else {
-            kb.status = BatteryStatus::Absent;
-            kb.model = "未检测到 Valkyrie 键盘";
-            kb.transport = "切到 2.4G 模式或插好接收器";
-        }
-    }
+    // 键盘（Valkyrie VK75）暂时不做：厂商协议走用户态抓不到的层，
+    // 需要 USBPcap 才能继续。细节见 docs/HANDOFF.md。
 
     // --- 耳机：iKF（Jieli 方案）---
     DeviceInfo hs;
@@ -319,12 +316,12 @@ std::vector<DeviceInfo> poll_devices() {
         di.percent = b->percent;
         di.millivolts = -1;
         di.charging = false;
-        if (di.model.rfind("未检测到", 0) == 0 || di.model.empty()) di.model = b->name;
+        if (di.model.rfind("未检测到", 0) == 0 || di.model.empty())
+            di.model = clean_bt_name(b->name);
         di.transport = "蓝牙 LE · GATT Battery";
         di.note = b->address;
     };
 
-    upgrade(kb, find_ble({"vk 75", "vk75", "valkyrie"}));
     upgrade(hs, find_ble({"ikf"}));
 
     // --- Windows 已采集到的蓝牙电量（经典蓝牙也能拿到，来自 HFP）---
@@ -346,16 +343,17 @@ std::vector<DeviceInfo> poll_devices() {
         di.percent = b->percent;
         di.millivolts = -1;
         di.charging = false;
+        // 只在蓝牙下连接时，HID 那条路是空手而归的，型号要用系统里的名字补上
+        if (di.model.rfind("未检测到", 0) == 0 || di.model.empty())
+            di.model = clean_bt_name(b->name);
         di.transport = "蓝牙 · 系统电量";
         di.note.clear();
     };
 
-    upgrade_bt(kb, find_bt({"vk 75", "vk75", "valkyrie"}));
     upgrade_bt(hs, find_bt({"ikf"}));
 
     // 所有升级都做完再入列，避免 push_back 拷贝之后又去改局部变量
     out.push_back(mouse);
-    out.push_back(kb);
     out.push_back(hs);
 
     hid_exit();

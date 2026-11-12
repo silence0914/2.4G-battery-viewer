@@ -84,8 +84,14 @@ $targets = @(
        Inc  = @($sdk_cppwinrt)
        Libs = @('WindowsApp.lib', 'setupapi.lib') }
 
+    @{ Name = 'autotest'; Exe = 'autostart_test.exe'
+       Src  = @('src\autostart_test.cpp', 'src\autostart.cpp')
+       Inc  = @('src')
+       Libs = @('advapi32.lib') }
+
     @{ Name = 'app';      Exe = 'battery_viewer.exe'
-       Src  = (@('src\app_main.cpp', 'src\providers.cpp', 'src\ble_battery.cpp', 'src\bt_pnp_battery.cpp') +
+       Src  = (@('src\app_main.cpp', 'src\providers.cpp', 'src\ble_battery.cpp', 'src\bt_pnp_battery.cpp',
+                 'src\autostart.cpp') +
                $imgui_src + @('third_party\hidapi\windows\hid.c'))
        Inc  = ($hidapi + $imgui + @($sdk_cppwinrt))
        Libs = ($hid_libs + @('d3d11.lib', 'dxgi.lib', 'd3dcompiler.lib', 'WindowsApp.lib')) }

@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <mutex>
 #include <string>
@@ -20,6 +21,7 @@
 #include "imgui_impl_win32.h"
 
 #include "providers.h"
+#include "autostart.h"
 
 // ---------------------------------------------------------------------------
 // D3D11
@@ -124,6 +126,11 @@ static void worker_main() {
 // ---------------------------------------------------------------------------
 // 界面
 // ---------------------------------------------------------------------------
+static int g_page = 0;              // 0 = 设备，1 = 设置
+static bool g_autostart = false;
+static std::string g_autostart_err;
+static const char* kVersion = "1.1";
+
 static const ImU32 kTrackBg = IM_COL32(52, 56, 63, 255);
 static const ImU32 kGood = IM_COL32(86, 200, 120, 255);
 static const ImU32 kWarn = IM_COL32(235, 180, 70, 255);
@@ -234,6 +241,138 @@ static void draw_card(const DeviceInfo& d) {
     ImGui::Dummy(ImVec2(0.0f, 4.0f));
 }
 
+// 卡片容器：圆角深色块
+static void card_begin(const char* id, float height) {
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.118f, 0.126f, 0.145f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ChildRounding, 10.0f);
+    ImGui::BeginChild(id, ImVec2(0.0f, height), false,
+                      ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+}
+
+static void card_end() {
+    ImGui::EndChild();
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor();
+    ImGui::Dummy(ImVec2(0.0f, 4.0f));
+}
+
+static void section_title(const char* text) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.56f, 0.62f, 0.72f, 1.0f));
+    ImGui::TextUnformatted(text);
+    ImGui::PopStyleColor();
+}
+
+static void dim_text(const char* text) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.50f, 0.53f, 0.58f, 1.0f));
+    ImGui::TextUnformatted(text);
+    ImGui::PopStyleColor();
+}
+
+static bool page_tab(const char* label, bool active) {
+    const float w = ImGui::CalcTextSize(label).x + 30.0f;
+    ImGui::PushStyleColor(ImGuiCol_Button, active ? ImVec4(0.21f, 0.46f, 0.85f, 1.0f)
+                                                  : ImVec4(0.15f, 0.16f, 0.19f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, active ? ImVec4(0.25f, 0.51f, 0.90f, 1.0f)
+                                                         : ImVec4(0.21f, 0.23f, 0.27f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.19f, 0.42f, 0.78f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, active ? ImVec4(1.0f, 1.0f, 1.0f, 1.0f)
+                                                : ImVec4(0.62f, 0.66f, 0.72f, 1.0f));
+    bool clicked = ImGui::Button(label, ImVec2(w, 28.0f));
+    ImGui::PopStyleColor(4);
+    return clicked;
+}
+
+// 路径太长时留头留尾
+static std::string elide_middle(const std::string& s, size_t max_chars) {
+    if (s.size() <= max_chars || max_chars < 8) return s;
+    size_t head = (max_chars - 3) / 2;
+    size_t tail = max_chars - 3 - head;
+    return s.substr(0, head) + "..." + s.substr(s.size() - tail);
+}
+
+static void draw_devices() {
+    std::vector<DeviceInfo> snapshot;
+    {
+        std::lock_guard<std::mutex> lock(g_shared.mtx);
+        snapshot = g_shared.devices;
+    }
+
+    // 只显示已连接的设备：没插接收器 / 没配对的一律不占位
+    std::vector<DeviceInfo> shown;
+    shown.reserve(snapshot.size());
+    for (const DeviceInfo& d : snapshot) {
+        if (d.status != BatteryStatus::Absent) shown.push_back(d);
+    }
+
+    if (shown.empty()) {
+        ImGui::Dummy(ImVec2(0.0f, 26.0f));
+        ImGui::SetCursorPosX(18.0f);
+        dim_text(snapshot.empty() ? "正在扫描外设…" : "没有检测到已连接的外设");
+        ImGui::Dummy(ImVec2(0.0f, 2.0f));
+        ImGui::SetCursorPosX(18.0f);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.40f, 0.42f, 0.46f, 1.0f));
+        ImGui::TextUnformatted("插好接收器或连上蓝牙后会自动出现");
+        ImGui::PopStyleColor();
+        return;
+    }
+
+    for (const DeviceInfo& d : shown) draw_card(d);
+}
+
+static void draw_settings() {
+    // --- 启动 ---
+    card_begin("##boot", 112.0f);
+    ImGui::SetCursorPos(ImVec2(16.0f, 10.0f));
+    section_title("启动");
+
+    ImGui::SetCursorPos(ImVec2(16.0f, 42.0f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.20f, 0.22f, 0.26f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.26f, 0.29f, 0.34f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.24f, 0.27f, 0.32f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(0.36f, 0.64f, 1.0f, 1.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 4.0f));
+
+    bool enabled = g_autostart;
+    if (ImGui::Checkbox("开机自动启动", &enabled)) {
+        if (set_autostart(enabled)) {
+            g_autostart = enabled;
+            g_autostart_err.clear();
+        } else {
+            g_autostart_err = "写入注册表失败，可能被安全软件拦了";
+        }
+    }
+
+    ImGui::PopStyleVar();
+    ImGui::PopStyleColor(4);
+
+    ImGui::SetCursorPos(ImVec2(16.0f, 78.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, g_autostart_err.empty()
+                                             ? ImVec4(0.50f, 0.53f, 0.58f, 1.0f)
+                                             : ImVec4(0.90f, 0.36f, 0.33f, 1.0f));
+    ImGui::TextUnformatted(g_autostart_err.empty()
+                               ? "登录 Windows 后自动运行，普通权限即可"
+                               : g_autostart_err.c_str());
+    ImGui::PopStyleColor();
+    card_end();
+
+    // --- 关于 ---
+    card_begin("##about", 126.0f);
+    ImGui::SetCursorPos(ImVec2(16.0f, 10.0f));
+    section_title("关于");
+
+    ImGui::SetCursorPos(ImVec2(16.0f, 40.0f));
+    ImGui::Text("外设电量  v%s", kVersion);
+
+    ImGui::SetCursorPos(ImVec2(16.0f, 68.0f));
+    dim_text("支持 Logitech G903 · iKF V11 Pro+");
+
+    ImGui::SetCursorPos(ImVec2(16.0f, 94.0f));
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.38f, 0.40f, 0.44f, 1.0f));
+    ImGui::TextUnformatted(elide_middle(current_exe_path(), 50).c_str());
+    ImGui::PopStyleColor();
+    card_end();
+}
+
 static void draw_ui() {
     ImGuiIO& io = ImGui::GetIO();
 
@@ -272,21 +411,17 @@ static void draw_ui() {
     if (ImGui::GetCursorPosX() < target_x) ImGui::SetCursorPosX(target_x);
     if (ImGui::Button(btn)) g_shared.refresh = true;
 
-    ImGui::Dummy(ImVec2(0, 6));
+    // 页面切换
+    if (page_tab("设备", g_page == 0)) g_page = 0;
+    ImGui::SameLine(0.0f, 6.0f);
+    if (page_tab("设置", g_page == 1)) g_page = 1;
 
-    std::vector<DeviceInfo> snapshot;
-    {
-        std::lock_guard<std::mutex> lock(g_shared.mtx);
-        snapshot = g_shared.devices;
-    }
+    ImGui::Dummy(ImVec2(0, 4));
 
-    if (snapshot.empty()) {
-        ImGui::Dummy(ImVec2(0, 40));
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.62f, 0.66f, 1.0f));
-        ImGui::TextUnformatted("正在扫描外设…");
-        ImGui::PopStyleColor();
+    if (g_page == 0) {
+        draw_devices();
     } else {
-        for (const DeviceInfo& d : snapshot) draw_card(d);
+        draw_settings();
     }
 
     ImGui::End();
@@ -342,7 +477,14 @@ static void load_fonts() {
     io.Fonts->AddFontDefault();
 }
 
-int main(int, char**) {
+int main(int argc, char** argv) {
+    // --settings 直接打开设置页（自测 / 截图用）
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--settings") == 0) g_page = 1;
+    }
+
+    g_autostart = autostart_enabled();
+
     ImGui_ImplWin32_EnableDpiAwareness();
 
     WNDCLASSEXW wc = {};
@@ -354,7 +496,7 @@ int main(int, char**) {
     wc.lpszClassName = L"BatteryViewerWnd";
     RegisterClassExW(&wc);
 
-    int win_w = 560, win_h = 530;
+    int win_w = 560, win_h = 430;
     RECT work{};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
     int x = work.left + ((work.right - work.left) - win_w) / 2;
