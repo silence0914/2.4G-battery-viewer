@@ -23,10 +23,6 @@ Windows 上显示鼠标 / 耳机电量的桌面小工具。C++20 + Win32 + Direc
 界面上只显示**当前已连接**的设备：没插接收器、没配对的一律不占位，插上后自动出现。
 读不到电量的设备会明确写出原因，不会假装有数据。
 
-「设置」页可以开关**开机自动启动**（写 `HKCU\...\CurrentVersion\Run`，普通权限即可）。
-
-![设置页](docs/settings.png)
-
 协议探测的完整记录见 [docs/PROTOCOL-NOTES.md](docs/PROTOCOL-NOTES.md)。
 
 ## 构建
@@ -72,9 +68,6 @@ src/
   ble_battery.h
   bt_pnp_battery.cpp 读 Windows 采集的蓝牙电量（SetupAPI 设备属性）
   bt_pnp_battery.h
-  autostart.cpp     开机自动启动（HKCU Run 项）
-  autostart.h
-  autostart_test.cpp 开机启动注册表读写自测
   device.h          DeviceInfo / 状态枚举 / 电压换算
   probe_main.cpp    HID 枚举与描述符导出工具
   rawprobe.cpp      原始报文收发工具
@@ -100,5 +93,3 @@ docs/
 - 电压到百分比的曲线是通用锂电近似，不是罗技官方曲线，可能与 G HUB 显示有偏差
 - G903 休眠时 HID++ 无应答，会显示为「接收器在，但鼠标无应答」
 - 键盘电量已搁置，需要 USBPcap 抓 USB 层，见 HANDOFF.md
-- 设置页的开机启动依赖写入注册表；在低完整性（Low IL）受限进程里会被拒绝，
-  此时设置页会直接用红字提示。正常双击运行时不受影响

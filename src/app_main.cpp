@@ -1,4 +1,4 @@
-// ---------------------------------------------------------------------------
+﻿// ---------------------------------------------------------------------------
 // 外设电量 -- 主程序（Win32 + D3D11 + Dear ImGui）
 // ---------------------------------------------------------------------------
 
@@ -9,7 +9,6 @@
 #include <atomic>
 #include <chrono>
 #include <cstdio>
-#include <cstring>
 #include <ctime>
 #include <mutex>
 #include <string>
@@ -21,7 +20,6 @@
 #include "imgui_impl_win32.h"
 
 #include "providers.h"
-#include "autostart.h"
 
 // ---------------------------------------------------------------------------
 // D3D11
@@ -126,12 +124,6 @@ static void worker_main() {
 // ---------------------------------------------------------------------------
 // 界面
 // ---------------------------------------------------------------------------
-static int g_page = 0;              // 0 = 设备，1 = 设置
-static bool g_autostart = false;
-static std::string g_autostart_err;
-static std::string g_autostart_how;   // "Run" / "Startup" / 空
-static const char* kVersion = "1.1";
-
 static const ImU32 kTrackBg = IM_COL32(52, 56, 63, 255);
 static const ImU32 kGood = IM_COL32(86, 200, 120, 255);
 static const ImU32 kWarn = IM_COL32(235, 180, 70, 255);
@@ -269,28 +261,6 @@ static void dim_text(const char* text) {
     ImGui::PopStyleColor();
 }
 
-static bool page_tab(const char* label, bool active) {
-    const float w = ImGui::CalcTextSize(label).x + 30.0f;
-    ImGui::PushStyleColor(ImGuiCol_Button, active ? ImVec4(0.21f, 0.46f, 0.85f, 1.0f)
-                                                  : ImVec4(0.15f, 0.16f, 0.19f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, active ? ImVec4(0.25f, 0.51f, 0.90f, 1.0f)
-                                                         : ImVec4(0.21f, 0.23f, 0.27f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.19f, 0.42f, 0.78f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_Text, active ? ImVec4(1.0f, 1.0f, 1.0f, 1.0f)
-                                                : ImVec4(0.62f, 0.66f, 0.72f, 1.0f));
-    bool clicked = ImGui::Button(label, ImVec2(w, 28.0f));
-    ImGui::PopStyleColor(4);
-    return clicked;
-}
-
-// 路径太长时留头留尾
-static std::string elide_middle(const std::string& s, size_t max_chars) {
-    if (s.size() <= max_chars || max_chars < 8) return s;
-    size_t head = (max_chars - 3) / 2;
-    size_t tail = max_chars - 3 - head;
-    return s.substr(0, head) + "..." + s.substr(s.size() - tail);
-}
-
 static void draw_devices() {
     std::vector<DeviceInfo> snapshot;
     {
@@ -318,70 +288,6 @@ static void draw_devices() {
     }
 
     for (const DeviceInfo& d : shown) draw_card(d);
-}
-
-static void draw_settings() {
-    // --- 启动 ---
-    card_begin("##boot", 112.0f);
-    ImGui::SetCursorPos(ImVec2(16.0f, 10.0f));
-    section_title("启动");
-
-    ImGui::SetCursorPos(ImVec2(16.0f, 42.0f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBg, ImVec4(0.20f, 0.22f, 0.26f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImVec4(0.26f, 0.29f, 0.34f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_FrameBgActive, ImVec4(0.24f, 0.27f, 0.32f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_CheckMark, ImVec4(0.36f, 0.64f, 1.0f, 1.0f));
-    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(4.0f, 4.0f));
-
-    bool enabled = g_autostart;
-    if (ImGui::Checkbox("开机自动启动", &enabled)) {
-        if (set_autostart(enabled)) {
-            g_autostart = enabled;
-            g_autostart_how = enabled ? autostart_backend() : std::string();
-            g_autostart_err.clear();
-        } else {
-            g_autostart_err = autostart_last_error();
-            if (g_autostart_err.empty()) g_autostart_err = "设置失败";
-        }
-    }
-
-    ImGui::PopStyleVar();
-    ImGui::PopStyleColor(4);
-
-    // 提示行：有错误就红字报错，否则说明当前是怎么实现的
-    std::string hint = "登录 Windows 后自动运行，普通权限即可";
-    ImVec4 hint_col(0.50f, 0.53f, 0.58f, 1.0f);
-    if (!g_autostart_err.empty()) {
-        hint = g_autostart_err;
-        hint_col = ImVec4(0.90f, 0.36f, 0.33f, 1.0f);
-    } else if (g_autostart) {
-        hint = (g_autostart_how == "Startup")
-                   ? "已用「启动」文件夹实现（注册表被拦截）"
-                   : "已加入开机启动项";
-    }
-
-    ImGui::SetCursorPos(ImVec2(16.0f, 78.0f));
-    ImGui::PushStyleColor(ImGuiCol_Text, hint_col);
-    ImGui::TextUnformatted(hint.c_str());
-    ImGui::PopStyleColor();
-    card_end();
-
-    // --- 关于 ---
-    card_begin("##about", 126.0f);
-    ImGui::SetCursorPos(ImVec2(16.0f, 10.0f));
-    section_title("关于");
-
-    ImGui::SetCursorPos(ImVec2(16.0f, 40.0f));
-    ImGui::Text("外设电量  v%s", kVersion);
-
-    ImGui::SetCursorPos(ImVec2(16.0f, 68.0f));
-    dim_text("支持 Logitech G903 · iKF V11 Pro+");
-
-    ImGui::SetCursorPos(ImVec2(16.0f, 94.0f));
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.38f, 0.40f, 0.44f, 1.0f));
-    ImGui::TextUnformatted(elide_middle(current_exe_path(), 50).c_str());
-    ImGui::PopStyleColor();
-    card_end();
 }
 
 static void draw_ui() {
@@ -422,18 +328,9 @@ static void draw_ui() {
     if (ImGui::GetCursorPosX() < target_x) ImGui::SetCursorPosX(target_x);
     if (ImGui::Button(btn)) g_shared.refresh = true;
 
-    // 页面切换
-    if (page_tab("设备", g_page == 0)) g_page = 0;
-    ImGui::SameLine(0.0f, 6.0f);
-    if (page_tab("设置", g_page == 1)) g_page = 1;
-
     ImGui::Dummy(ImVec2(0, 4));
 
-    if (g_page == 0) {
-        draw_devices();
-    } else {
-        draw_settings();
-    }
+    draw_devices();
 
     ImGui::End();
     ImGui::PopStyleVar();
@@ -488,15 +385,7 @@ static void load_fonts() {
     io.Fonts->AddFontDefault();
 }
 
-int main(int argc, char** argv) {
-    // --settings 直接打开设置页（自测 / 截图用）
-    for (int i = 1; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--settings") == 0) g_page = 1;
-    }
-
-    g_autostart = autostart_enabled();
-    g_autostart_how = autostart_backend();
-
+int main() {
     ImGui_ImplWin32_EnableDpiAwareness();
 
     WNDCLASSEXW wc = {};
@@ -508,7 +397,7 @@ int main(int argc, char** argv) {
     wc.lpszClassName = L"BatteryViewerWnd";
     RegisterClassExW(&wc);
 
-    int win_w = 560, win_h = 430;
+    int win_w = 560, win_h = 380;
     RECT work{};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
     int x = work.left + ((work.right - work.left) - win_w) / 2;

@@ -90,18 +90,16 @@ $targets = @(
        Inc  = @()
        Libs = @('bthprops.lib') }
 
-    @{ Name = 'autotest'; Exe = 'autostart_test.exe'
-       Src  = @('src\autostart_test.cpp', 'src\autostart.cpp')
-       Inc  = @('src')
-       Libs = @('advapi32.lib', 'shell32.lib', 'ole32.lib') }
-
     @{ Name = 'app';      Exe = 'battery_viewer.exe'
        Src  = (@('src\app_main.cpp', 'src\providers.cpp', 'src\ble_battery.cpp',
-                  'src\bt_pnp_battery.cpp', 'src\bt_link.cpp', 'src\autostart.cpp') +
+                  'src\bt_pnp_battery.cpp', 'src\bt_link.cpp') +
                 $imgui_src + @('third_party\hidapi\windows\hid.c'))
        Inc  = ($hidapi + $imgui + @($sdk_cppwinrt))
-       Libs = ($hid_libs + @('bthprops.lib', 'shell32.lib', 'd3d11.lib', 'dxgi.lib',
-                             'd3dcompiler.lib', 'WindowsApp.lib')) }
+       Libs = ($hid_libs + @('bthprops.lib', 'd3d11.lib', 'dxgi.lib',
+                             'd3dcompiler.lib', 'WindowsApp.lib'))
+       # 关键：GUI 程序必须是 WINDOWS 子系统，否则双击 exe 会多弹一个黑色控制台窗口。
+       # 但我们写的是 main() 而不是 WinMain()，所以要显式指定入口。
+       Link = '/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup' }
 )
 
 if ($Target -ne 'all') {
@@ -119,9 +117,10 @@ foreach ($t in $targets) {
     }) -join ' '
     $src = ($t.Src | ForEach-Object { '"' + (Join-Path $root $_) + '"' }) -join ' '
     $lib = ($t.Libs -join ' ')
+    $link = if ($t.Link) { $t.Link } else { '' }
 
     $cmd = "`"$vcvars`" >nul 2>&1 && cd /d `"$out`" && cl /nologo /std:c++20 /EHsc /W3 /utf-8 /O2 /MD " +
-           "$defs $inc $src /link /INCREMENTAL:NO $lib /OUT:$($t.Exe)"
+           "$defs $inc $src /link /INCREMENTAL:NO $lib $link /OUT:$($t.Exe)"
 
     Write-Host "building $($t.Exe)..."
     cmd /c $cmd

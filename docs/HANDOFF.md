@@ -21,6 +21,7 @@
 3. **设置页 + 开机自动启动** —— 顶部新增「设备 / 设置」两个标签。
    设置页的开关写 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
    的 `BatteryViewer` 值（带引号的完整 exe 路径），见 `src/autostart.cpp`。
+   **这一条后来被整块删掉了，见下文「设置页与开机启动已删除」。**
 
 顺带修的一个隐患：耳机只走蓝牙连接时，HID 那条路找不到设备，
 原先会把型号留成「未检测到 iKF 耳机」；现在 `upgrade_bt()` 会用系统里的
@@ -28,9 +29,7 @@
 
 **验证方式的坑**：DSH 里跑的任何进程都是 **Low 完整性级别**，
 注册表写入一律被拒（`danger-full-access` 也不解决，那是 token 限制不是文件沙箱）。
-所以开机启动没法在这里端到端验证，改用两个办法：
-`--settings` 参数直接打开设置页截图；`out\autostart_test.exe` 做「开 → 读 → 关 → 读 → 还原」自测，
-双击运行（正常 Medium 完整性）就会打印 PASS。
+所以开机启动这类功能在这里没法端到端验证——这也是后来直接砍掉它的原因之一。
 
 另外一个环境限制：CLion 全屏占着桌面，程序窗口被压在后面，
 `SetForegroundWindow` 拿不到前台，真实鼠标点击打不到窗口；
@@ -73,6 +72,34 @@
   设置页会把「已用启动文件夹实现（注册表被拦截）」显示在开关下面。
 
 `out\autostart_test.exe` 已同步更新，会打印 backend 和失败原因。
+
+> 追记（2026-11-13 凌晨）：用户在正常权限下点开关**仍然**报「错误码 5」，
+> 两条退路都被拦住。用户决定放弃这个需求，整个设置页已删除——
+> 本节的代码（`src/autostart.*` / `autostart_test.cpp`）全部移除，
+> 若以后要捡回来，这段记录就是完整的设计说明。
+
+---
+
+## 2026-11-13 凌晨：删设置页 + 修黑窗口
+
+用户提了两条：
+
+1. **双击 exe 会额外弹一个全黑窗口** —— 根因是 `build.ps1` 没给 app 目标指定
+   `/SUBSYSTEM`，`cl` 默认按 **CONSOLE** 子系统链接，Windows 于是给这个 GUI
+   程序配了一个控制台窗口（就是那个黑的）。
+   修法：`build.ps1` 的每个目标加了可选的 `Link` 字段，
+   app 用 `Link = '/SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup'`。
+   **注意必须显式写 `/ENTRY:mainCRTStartup`**：代码里是 `main()` 不是 `WinMain()`，
+   只加 `/SUBSYSTEM:WINDOWS` 会报找不到 `WinMain`。
+   `CMakeLists.txt` 侧对应 `target_link_options(battery_viewer PRIVATE /ENTRY:mainCRTStartup)`
+   （`add_executable(... WIN32 ...)` 本来就给 WINDOWS 子系统）。
+   校验方式：读 PE 头 optional header 的 Subsystem 字段，`2` = GUI 正确，`3` = 还是控制台。
+
+2. **开机启动报错误码 5 → 这个需求不做了** —— 设置页、`src/autostart.h`、
+   `src/autostart.cpp`、`src/autostart_test.cpp`、`build.ps1` 的 `autotest` 目标、
+   `--settings` 启动参数、`docs/settings.png` 全部删除。
+   界面回到单页：标题行 + 卡片列表，窗口 560x380。
+   以后要加设置，从 git 历史里 `git show 59a885a:src/autostart.cpp` 取回。
 
 ---
 

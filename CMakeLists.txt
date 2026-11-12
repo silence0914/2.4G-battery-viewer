@@ -53,10 +53,11 @@ add_executable(battery_viewer WIN32
     src/providers.cpp
     src/ble_battery.cpp
     src/bt_pnp_battery.cpp
-    src/bt_link.cpp
-    src/autostart.cpp)
+    src/bt_link.cpp)
 target_include_directories(battery_viewer PRIVATE ${CPPWINRT_DIR})
-target_link_libraries(battery_viewer PRIVATE hidapi imgui WindowsApp setupapi bthprops shell32)
+target_link_libraries(battery_viewer PRIVATE hidapi imgui WindowsApp setupapi bthprops)
+# WIN32 子系统默认找 WinMain，但代码里写的是 main()，显式指定入口
+target_link_options(battery_viewer PRIVATE /ENTRY:mainCRTStartup)
 
 # ---------------------------------------------------------------------------
 # command line tools
