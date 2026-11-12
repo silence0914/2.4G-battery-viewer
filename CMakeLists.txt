@@ -53,9 +53,10 @@ add_executable(battery_viewer WIN32
     src/providers.cpp
     src/ble_battery.cpp
     src/bt_pnp_battery.cpp
+    src/bt_link.cpp
     src/autostart.cpp)
 target_include_directories(battery_viewer PRIVATE ${CPPWINRT_DIR})
-target_link_libraries(battery_viewer PRIVATE hidapi imgui WindowsApp setupapi)
+target_link_libraries(battery_viewer PRIVATE hidapi imgui WindowsApp setupapi bthprops shell32)
 
 # ---------------------------------------------------------------------------
 # command line tools

@@ -4,7 +4,8 @@
 #include <vector>
 
 struct BtBatteryDevice {
-    std::string name;   // 设备友好名，如 "iKF-V11 Pro+"
+    std::string name;      // 设备友好名，如 "iKF-V11 Pro+"
+    std::string address;   // 12 位大写十六进制蓝牙地址，解析失败时为空
     int percent = -1;
 };
 

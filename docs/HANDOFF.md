@@ -40,6 +40,42 @@
 
 ---
 
+## 2026-11-12 深夜：两个 bug
+
+### 1. 耳机明明关着，却还显示「已连接 100%」
+
+**原因**：耳机断电后 Windows 不会立刻删掉它的 BTHENUM 服务节点，
+`SetupDiGetClassDevs(..., DIGCF_PRESENT)` 照样能枚举到，
+节点上那个 `{104EA319-...},2` 电量属性也还是上次的值（100）。
+于是「节点在」被误当成了「设备连着」。
+
+**判据**：`SetupAPI` 的 PRESENT 标志不能用于蓝牙。真正的链路状态在
+`BLUETOOTH_DEVICE_INFO::fConnected`（`BluetoothFindFirstDevice` / `bthprops.lib`）。
+实测耳机断电时 `fConnected = no`，而节点仍在 —— 两者确实不一致。
+
+**改法**：`src/bt_link.cpp` 的 `query_connected_bluetooth()` 先查出当前真正连着的
+地址集合；`scan_bluetooth_pnp_battery()` 从设备实例 ID 尾部
+（`...&0&5514CD864055_C00000000`）解析出地址，不在集合里的节点直接丢掉。
+注意函数返回 `false` 表示**查询本身失败**（蓝牙服务不可用），
+这种情况下不要拿空集合去否决设备，否则会把真连着的也藏掉。
+
+### 2. 开机自动启动在正常权限下也报「写入注册表失败」
+
+原来失败信息是一句写死的话，任何原因都显示「可能被安全软件拦了」，看不到真实原因。
+现在改成：
+
+- `autostart_last_error()` 把真实的 Win32 错误码带出来，界面直接显示（如「错误码 5」）
+- 注册表写失败时**自动退回到「启动」文件夹快捷方式**
+  （`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\外设电量.lnk`，
+  用 `IShellLink` + `IPersistFile` 创建）。这条路不需要注册表写权限，
+  效果和 Run 项完全一样。
+- `autostart_backend()` 告诉你当前走的是 `Run` 还是 `Startup`，
+  设置页会把「已用启动文件夹实现（注册表被拦截）」显示在开关下面。
+
+`out\autostart_test.exe` 已同步更新，会打印 backend 和失败原因。
+
+---
+
 ## 已验证的三条通路
 
 | 设备 | 通路 | 关键点 |

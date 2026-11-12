@@ -8,6 +8,9 @@
 //
 // 这条通路不依赖 BLE，也不依赖厂商协议，只要 Windows 设置页能显示电量，
 // 这里就能读到。
+//
+// 注意：耳机断电后节点和这个属性都还在（Windows 会保留已配对设备的节点），
+// 所以必须再用经典蓝牙 API 确认链路真的是连着的，否则会读到上一次的旧值。
 // ---------------------------------------------------------------------------
 
 #include "bt_pnp_battery.h"
@@ -16,6 +19,12 @@
 #include <windows.h>
 #include <setupapi.h>
 #include <devpkey.h>
+
+#include <algorithm>
+#include <cwctype>
+#include <string>
+
+#include "bt_link.h"
 
 #pragma comment(lib, "setupapi.lib")
 
@@ -34,10 +43,34 @@ std::string narrow(const wchar_t* w) {
     return s;
 }
 
+// 设备实例 ID 的尾巴形如 ...&0&5514CD864055_C00000000，从中抠出设备的
+// 12 位十六进制地址。
+std::string address_from_instance_id(const std::wstring& id) {
+    size_t us = id.find_last_of(L'_');
+    if (us == std::wstring::npos) return {};
+    size_t amp = id.find_last_of(L'&', us);
+    if (amp == std::wstring::npos || amp + 1 >= us) return {};
+
+    std::wstring core = id.substr(amp + 1, us - amp - 1);
+    if (core.size() != 12) return {};
+
+    std::string out;
+    out.reserve(12);
+    for (wchar_t c : core) {
+        if (!iswxdigit(c)) return {};
+        out.push_back(static_cast<char>(towupper(c)));
+    }
+    return out;
+}
+
 }  // namespace
 
 std::vector<BtBatteryDevice> scan_bluetooth_pnp_battery() {
     std::vector<BtBatteryDevice> out;
+
+    // 先拿一次"真正连着"的地址集合，后面每个节点都拿它比对
+    std::vector<std::string> connected;
+    const bool link_known = query_connected_bluetooth(&connected);
 
     HDEVINFO set = SetupDiGetClassDevsW(nullptr, L"BTHENUM", nullptr,
                                         DIGCF_ALLCLASSES | DIGCF_PRESENT);
@@ -56,6 +89,18 @@ std::vector<BtBatteryDevice> scan_bluetooth_pnp_battery() {
         }
         if (type != DEVPROP_TYPE_BYTE) continue;
 
+        // 节点在不在（PRESENT）不代表设备开着，必须查链路状态
+        wchar_t instance[512] = {0};
+        std::string addr;
+        if (SetupDiGetDeviceInstanceIdW(set, &data, instance, 512, nullptr)) {
+            addr = address_from_instance_id(instance);
+        }
+        if (!addr.empty() && link_known) {
+            if (std::find(connected.begin(), connected.end(), addr) == connected.end()) {
+                continue;   // 设备已关机 / 断开，这条是旧数据
+            }
+        }
+
         wchar_t name[512] = {0};
         DWORD reg_type = 0;
         SetupDiGetDeviceRegistryPropertyW(set, &data, SPDRP_FRIENDLYNAME, &reg_type,
@@ -67,6 +112,7 @@ std::vector<BtBatteryDevice> scan_bluetooth_pnp_battery() {
 
         BtBatteryDevice d;
         d.name = narrow(name);
+        d.address = addr;
         d.percent = static_cast<int>(value);
         if (d.percent >= 0 && d.percent <= 100) out.push_back(d);
     }

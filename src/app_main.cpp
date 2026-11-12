@@ -129,6 +129,7 @@ static void worker_main() {
 static int g_page = 0;              // 0 = 设备，1 = 设置
 static bool g_autostart = false;
 static std::string g_autostart_err;
+static std::string g_autostart_how;   // "Run" / "Startup" / 空
 static const char* kVersion = "1.1";
 
 static const ImU32 kTrackBg = IM_COL32(52, 56, 63, 255);
@@ -336,22 +337,32 @@ static void draw_settings() {
     if (ImGui::Checkbox("开机自动启动", &enabled)) {
         if (set_autostart(enabled)) {
             g_autostart = enabled;
+            g_autostart_how = enabled ? autostart_backend() : std::string();
             g_autostart_err.clear();
         } else {
-            g_autostart_err = "写入注册表失败，可能被安全软件拦了";
+            g_autostart_err = autostart_last_error();
+            if (g_autostart_err.empty()) g_autostart_err = "设置失败";
         }
     }
 
     ImGui::PopStyleVar();
     ImGui::PopStyleColor(4);
 
+    // 提示行：有错误就红字报错，否则说明当前是怎么实现的
+    std::string hint = "登录 Windows 后自动运行，普通权限即可";
+    ImVec4 hint_col(0.50f, 0.53f, 0.58f, 1.0f);
+    if (!g_autostart_err.empty()) {
+        hint = g_autostart_err;
+        hint_col = ImVec4(0.90f, 0.36f, 0.33f, 1.0f);
+    } else if (g_autostart) {
+        hint = (g_autostart_how == "Startup")
+                   ? "已用「启动」文件夹实现（注册表被拦截）"
+                   : "已加入开机启动项";
+    }
+
     ImGui::SetCursorPos(ImVec2(16.0f, 78.0f));
-    ImGui::PushStyleColor(ImGuiCol_Text, g_autostart_err.empty()
-                                             ? ImVec4(0.50f, 0.53f, 0.58f, 1.0f)
-                                             : ImVec4(0.90f, 0.36f, 0.33f, 1.0f));
-    ImGui::TextUnformatted(g_autostart_err.empty()
-                               ? "登录 Windows 后自动运行，普通权限即可"
-                               : g_autostart_err.c_str());
+    ImGui::PushStyleColor(ImGuiCol_Text, hint_col);
+    ImGui::TextUnformatted(hint.c_str());
     ImGui::PopStyleColor();
     card_end();
 
@@ -484,6 +495,7 @@ int main(int argc, char** argv) {
     }
 
     g_autostart = autostart_enabled();
+    g_autostart_how = autostart_backend();
 
     ImGui_ImplWin32_EnableDpiAwareness();
 
